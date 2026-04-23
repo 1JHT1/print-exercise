@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>字母特训 · 无尽下落 | 修复字母识别</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            min-height: 100vh;
+            background: radial-gradient(circle at 20% 30%, #0a1122, #03060f);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Fira Code', 'Courier New', monospace;
+            padding: 20px;
+        }
+
+        .game-container {
+            background: rgba(0, 5, 15, 0.65);
+            backdrop-filter: blur(8px);
+            border-radius: 60px;
+            padding: 20px 24px 28px;
+            box-shadow: 0 30px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+            border: 1px solid #2b4f76;
+        }
+
+        .stats-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 18px;
+            background: #030b1ae0;
+            border-radius: 48px;
+            padding: 12px 24px;
+        }
+
+        .stat {
+            background: #00000066;
+            border-radius: 40px;
+            padding: 4px 18px;
+            text-align: center;
+            min-width: 90px;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            color: #9bb5e0;
+        }
+
+        .stat-value {
+            font-size: 1.9rem;
+            font-weight: 800;
+            line-height: 1.2;
+            font-family: monospace;
+        }
+
+        .stat-value.correct { color: #3be07b; text-shadow: 0 0 5px #3be07b80; }
+        .stat-value.wrong { color: #f97373; }
+        .stat-value.acc { color: #f5c542; }
+        .stat-value.cpm { color: #66b0ff; }
+
+        .canvas-wrapper {
+            display: flex;
+            justify-content: center;
+        }
+
+        canvas {
+            background: #01061a;
+            border-radius: 32px;
+            box-shadow: 0 12px 28px black;
+            border: 2px solid #2e6b9e;
+            width: 100%;
+            height: auto;
+            cursor: pointer;
+        }
+
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 18px;
+        }
+
+        .death-badge {
+            background: #2e1e28;
+            padding: 5px 20px;
+            border-radius: 60px;
+            font-weight: bold;
+            color: #ffb58a;
+            border-left: 4px solid #ff7e2e;
+        }
+        .death-badge span {
+            font-size: 1.7rem;
+            font-weight: 800;
+            margin-left: 8px;
+            color: #ff9455;
+        }
+
+        .game-status {
+            background: #00000080;
+            padding: 6px 24px;
+            border-radius: 60px;
+            font-weight: 600;
+        }
+        .status-active { color: #8effb2; text-shadow: 0 0 4px #00cc66; }
+        .status-ended { color: #f97316; }
+
+        .restart {
+            background: linear-gradient(135deg, #2f5785, #16273f);
+            border: none;
+            padding: 8px 32px;
+            border-radius: 60px;
+            font-weight: bold;
+            font-size: 1rem;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+        }
+        .restart:hover {
+            background: linear-gradient(135deg, #4075aa, #1f3555);
+            transform: scale(0.97);
+        }
+
+        .footer-hint {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 0.7rem;
+            color: #6c8bb3;
+            background: #010b1a80;
+            border-radius: 40px;
+            padding: 8px 12px;
+        }
+
+        @media (max-width: 700px) {
+            .stat-value { font-size: 1.3rem; }
+            .stat { padding: 4px 12px; min-width: 70px; }
+            .death-badge span { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="stats-bar">
+        <div class="stat"><div class="stat-label">✅ 击中</div><div class="stat-value correct" id="hitCount">0</div></div>
+        <div class="stat"><div class="stat-label">❌ 错按</div><div class="stat-value wrong" id="missPress">0</div></div>
+        <div class="stat"><div class="stat-label">📉 准确率</div><div class="stat-value acc" id="accuracy">100%</div></div>
+        <div class="stat"><div class="stat-label">⚡ CPM</div><div class="stat-value cpm" id="cpmVal">0</div></div>
+    </div>
+    <div class="canvas-wrapper">
+        <canvas id="gameCanvas" width="1000" height="560" style="max-width:1000px; aspect-ratio:1000/560"></canvas>
+    </div>
+    <div class="info-panel">
+        <div class="death-badge">💀 剩余失误次数 <span id="mistakeLeft">5</span></div>
+        <div class="game-status" id="gameStateLabel">🟢 激战中</div>
+        <button class="restart" id="resetGameBtn">🔄 重新开局</button>
+    </div>
+    <div class="footer-hint">
+        ⌨️ 纯字母模式 (A-Z / a-z) &nbsp;&nbsp;|&nbsp;&nbsp; 不区分大小写<br>
+        ⚡ 速度会随存活时间**自动慢慢加快**，击中字母也会额外提速 &nbsp;|&nbsp; 失误≥5次或准确率＜30%时结束<br>
+        🎯 只要未死亡，字母会无限生成，永不停止
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- 画布元素 ----------
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const CW = 1000;
+        const CH = 560;
+        canvas.width = CW;
+        canvas.height = CH;
+        
+        // 参数
+        const MAX_MISTAKES = 5;
+        const MIN_ACCURACY = 30;
+        const BASE_SPEED = 1.0;
+        const MAX_SPEED = 5.2;
+        const TIME_SPEED_INCREASE = 0.008;
+        const HIT_SPEED_BONUS = 0.008;
+        const SPAWN_INTERVAL_MS = 800;
+        
+        // 字母池（大小写混合）
+        const LOWERS = 'abcdefghijklmnopqrstuvwxyz'.split('');
+        const UPPERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const CHAR_POOL = [...UPPERS, ...LOWERS];
+        
+        // 状态
+        let active = true;
+        let hitCount = 0;
+        let wrongPressCount = 0;
+        let floorMistake = 0;
+        let totalAttempts = 0;
+        let startTime = null;
+        let currentBaseSpeed = BASE_SPEED;
+        let fallingChars = [];
+        let effects = [];
+        let lastSpawnTime = 0;
+        let redFlash = 0;
+        
+        // DOM
+        const hitSpan = document.getElementById('hitCount');
+        const wrongSpan = document.getElementById('missPress');
+        const accuracySpan = document.getElementById('accuracy');
+        const cpmSpan = document.getElementById('cpmVal');
+        const mistakeLeftSpan = document.getElementById('mistakeLeft');
+        const gameStateSpan = document.getElementById('gameStateLabel');
+        const resetBtn = document.getElementById('resetGameBtn');
+        
+        function getRandomChar() {
+            return CHAR_POOL[Math.floor(Math.random() * CHAR_POOL.length)];
+        }
+        
+        function spawnFallingChar() {
+            if (!active) return;
+            const ch = getRandomChar();
+            const padding = 30;
+            const maxX = CW - padding - 25;
+            const x = padding + Math.random() * (maxX - padding);
+            fallingChars.push({
+                char: ch,
+                x: x,
+                y: 12,
+                speed: currentBaseSpeed,
+            });
+        }
+        
+        function ensureMinimumLetters(minCount = 2) {
+            if (!active) return;
+            while (fallingChars.length < minCount) {
+                spawnFallingChar();
+            }
+        }
+        
+        function updateUI() {
+            hitSpan.innerText = hitCount;
+            wrongSpan.innerText = wrongPressCount;
+            const leftMistakes = Math.max(0, MAX_MISTAKES - floorMistake);
+            mistakeLeftSpan.innerText = leftMistakes;
+            let accuracy = totalAttempts === 0 ? 100 : (hitCount / totalAttempts) * 100;
+            accuracySpan.innerText = accuracy.toFixed(1) + '%';
+            
+            if (startTime && active && hitCount > 0) {
+                const minutes = (Date.now() - startTime) / 60000;
+                cpmSpan.innerText = minutes > 0 ? Math.round(hitCount / minutes) : hitCount;
+            } else {
+                cpmSpan.innerText = hitCount;
+            }
+            
+            if (active) {
+                if (floorMistake >= MAX_MISTAKES) endGame();
+                if (totalAttempts >= 10 && accuracy < MIN_ACCURACY) endGame();
+            }
+        }
+        
+        function endGame() {
+            if (!active) return;
+            active = false;
+            gameStateSpan.innerHTML = '💀 游戏结束 💀';
+            gameStateSpan.classList.remove('status-active');
+            gameStateSpan.classList.add('status-ended');
+        }
+        
+        function resetGame() {
+            active = true;
+            hitCount = 0;
+            wrongPressCount = 0;
+            floorMistake = 0;
+            totalAttempts = 0;
+            fallingChars = [];
+            effects = [];
+            currentBaseSpeed = BASE_SPEED;
+            startTime = Date.now();
+            lastSpawnTime = Date.now();
+            for (let i = 0; i < 3; i++) spawnFallingChar();
+            updateUI();
+            gameStateSpan.innerHTML = '🟢 激战中';
+            gameStateSpan.classList.add('status-active');
+            gameStateSpan.classList.remove('status-ended');
+            redFlash = 0;
+        }
+        
+        // 核心：键盘处理，修复字母识别
+        function handleKeyPress(keyStr) {
+            if (!active) return;
+            // 确保只处理单个字母
+            if (!keyStr || keyStr.length !== 1) return;
+            const code = keyStr.charCodeAt(0);
+            // 只接受 a-z A-Z
+            if (!(code >= 65 && code <= 90) && !(code >= 97 && code <= 122)) return;
+            
+            const lowerKey = keyStr.toLowerCase();
+            // 查找最接近底部的匹配字母
+            let bestIdx = -1;
+            let maxY = -1;
+            for (let i = 0; i < fallingChars.length; i++) {
+                const item = fallingChars[i];
+                if (item.char.toLowerCase() === lowerKey) {
+                    if (item.y > maxY) {
+                        maxY = item.y;
+                        bestIdx = i;
+                    }
+                }
+            }
+            
+            if (bestIdx !== -1) {
+                // 命中
+                const matched = fallingChars[bestIdx];
+                hitCount++;
+                totalAttempts++;
+                // 特效
+                effects.push({
+                    x: matched.x + 12,
+                    y: matched.y + 18,
+                    char: matched.char,
+                    life: 1.0,
+                    type: 'hit'
+                });
+                fallingChars.splice(bestIdx, 1);
+                // 加速
+                currentBaseSpeed = Math.min(MAX_SPEED, currentBaseSpeed + HIT_SPEED_BONUS);
+                for (let c of fallingChars) c.speed = currentBaseSpeed;
+                updateUI();
+            } else {
+                // 错误按键
+                wrongPressCount++;
+                totalAttempts++;
+                redFlash = 0.65;
+                updateUI();
+            }
+        }
+        
+        // 键盘事件，确保不被输入法拦截
+        function onKeyDown(e) {
+            // 直接获取按键字符，避免组合键干扰
+            let key = e.key;
+            if (!key) return;
+            // 处理单个字符
+            if (key.length === 1) {
+                // 如果是字母，阻止默认行为并处理
+                if (/[A-Za-z]/i.test(key)) {
+                    e.preventDefault();
+                    handleKeyPress(key);
+                }
+            } else {
+                // 某些浏览器可能返回特殊字符串，但通常不会
+            }
+        }
+        
+        // 动画更新
+        function updateFalling() {
+            if (!active) return;
+            for (let i = 0; i < fallingChars.length; i++) {
+                const c = fallingChars[i];
+                c.y += c.speed;
+                if (c.y + 32 >= CH) {
+                    floorMistake++;
+                    fallingChars.splice(i, 1);
+                    i--;
+                    updateUI();
+                    if (!active) break;
+                }
+            }
+            ensureMinimumLetters(2);
+        }
+        
+        function updateSpeedByTime(now) {
+            if (!active || !startTime) return;
+            const elapsedSec = (now - startTime) / 1000;
+            const naturalSpeed = BASE_SPEED + elapsedSec * TIME_SPEED_INCREASE;
+            let target = Math.max(currentBaseSpeed, naturalSpeed);
+            target = Math.min(MAX_SPEED, target);
+            if (target > currentBaseSpeed) {
+                currentBaseSpeed = target;
+                for (let c of fallingChars) c.speed = currentBaseSpeed;
+            }
+        }
+        
+        function updateSpawning(now) {
+            if (!active) return;
+            if (lastSpawnTime === 0) lastSpawnTime = now;
+            if (now - lastSpawnTime >= SPAWN_INTERVAL_MS) {
+                spawnFallingChar();
+                lastSpawnTime = now;
+                if (fallingChars.length < 3) spawnFallingChar();
+            }
+        }
+        
+        function updateEffects() {
+            for (let i = 0; i < effects.length; i++) {
+                effects[i].life -= 0.035;
+                if (effects[i].life <= 0) {
+                    effects.splice(i, 1);
+                    i--;
+                }
+            }
+            if (redFlash > 0) redFlash -= 0.03;
+            if (redFlash < 0) redFlash = 0;
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, CW, CH);
+            const grad = ctx.createLinearGradient(0, 0, 0, CH);
+            grad.addColorStop(0, '#030b1f');
+            grad.addColorStop(1, '#0a152f');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, CW, CH);
+            
+            ctx.strokeStyle = '#2f6faa20';
+            for (let i = 0; i < CH; i += 35) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(CW, i);
+                ctx.stroke();
+            }
+            
+            const DEATH_LINE = CH - 28;
+            ctx.fillStyle = '#ff336622';
+            ctx.fillRect(0, DEATH_LINE - 6, CW, 12);
+            ctx.fillStyle = '#ff8866cc';
+            ctx.font = 'bold 12px monospace';
+            ctx.fillText('⚡ 触线即失误 ⚡', CW - 150, DEATH_LINE - 2);
+            
+            for (const item of fallingChars) {
+                const fontSize = 32;
+                ctx.font = `600 ${fontSize}px 'Fira Code', 'JetBrains Mono', monospace`;
+                const distToDeath = DEATH_LINE - item.y;
+                ctx.fillStyle = distToDeath < 40 ? '#ffaa77' : '#c4e2ff';
+                ctx.shadowColor = distToDeath < 40 ? '#ff5533' : '#3b9eff';
+                ctx.shadowBlur = 8;
+                ctx.fillText(item.char, item.x, item.y + fontSize);
+                ctx.fillStyle = '#ffffff60';
+                ctx.fillText(item.char, item.x - 1, item.y + fontSize - 1);
+            }
+            ctx.shadowBlur = 0;
+            
+            for (const eff of effects) {
+                if (eff.type === 'hit') {
+                    const alpha = eff.life;
+                    ctx.font = `bold ${24 + (1 - eff.life) * 12}px monospace`;
+                    ctx.fillStyle = `rgba(255, 220, 100, ${alpha})`;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#ffcc44';
+                    ctx.fillText(`✨ ${eff.char} ✨`, eff.x - 15, eff.y - 12);
+                    ctx.beginPath();
+                    ctx.arc(eff.x + 6, eff.y - 6, 14 * (1 - eff.life), 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 180, 50, ${alpha * 0.6})`;
+                    ctx.fill();
+                }
+            }
+            
+            if (redFlash > 0) {
+                ctx.fillStyle = `rgba(255, 70, 70, ${redFlash * 0.5})`;
+                ctx.fillRect(0, 0, CW, CH);
+            }
+            
+            if (!active) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+                ctx.fillRect(0, 0, CW, CH);
+                ctx.font = 'bold 40px "Segoe UI", monospace';
+                ctx.fillStyle = '#ffb851';
+                ctx.fillText('GAME OVER', CW/2-135, CH/2-40);
+                ctx.font = '18px monospace';
+                ctx.fillStyle = '#cceeff';
+                let reason = floorMistake >= MAX_MISTAKES ? `失误达到 ${MAX_MISTAKES} 次` : `准确率低于 ${MIN_ACCURACY}%`;
+                ctx.fillText(reason, CW/2-100, CH/2+25);
+                ctx.fillStyle = '#aaaaff';
+                ctx.font = '14px monospace';
+                ctx.fillText('点击「重新开局」继续挑战', CW/2-130, CH/2+85);
+            }
+            
+            ctx.font = 'bold 12px monospace';
+            ctx.fillStyle = '#8cbdff';
+            ctx.fillText(`⚡ 当前下落速度: ${currentBaseSpeed.toFixed(1)} px/帧 (随时间/击中增加)`, 20, 32);
+        }
+        
+        function animate(now) {
+            if (!startTime) startTime = now;
+            if (active) {
+                updateSpeedByTime(now);
+                updateSpawning(now);
+                updateFalling();
+                updateEffects();
+            }
+            draw();
+            requestAnimationFrame(animate);
+        }
+        
+        resetBtn.addEventListener('click', () => {
+            resetGame();
+            currentBaseSpeed = BASE_SPEED;
+            startTime = Date.now();
+            lastSpawnTime = Date.now();
+            effects = [];
+            redFlash = 0;
+        });
+        
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('contextmenu', e => e.preventDefault());
+        resetGame();
+        requestAnimationFrame(animate);
+    })();
+</script>
+</body>
+</html>
